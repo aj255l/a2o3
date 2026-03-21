@@ -7,6 +7,14 @@ requires-python = ">=3.13"
 authors = [
     {name = "Anna Lee", email = "ajunelee@outlook.com"}
 ]
+dependencies = [
+    "requests[security]",
+    "beautifulsoup4",
+    "yaspin",
+]
+
+[project.scripts]
+a2o3 = "a2o3.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
