@@ -1,4 +1,5 @@
 {
   "typeCheckingMode": "basic",
-  "reportUnusedCallResult": "none"
+  "reportUnusedCallResult": "none",
+  "reportOptionalMemberAccess": false 
 }

@@ -1,15 +1,14 @@
 import getpass
 import os
 import re
+from argparse import Namespace
 from pathlib import Path
 from urllib.parse import unquote
-from argparse import Namespace
 
 import requests
 from bs4 import BeautifulSoup
 from yaspin import yaspin
 from yaspin.spinners import Spinners
-
 
 LOGIN_URL = "https://archiveofourown.org/users/login"
 
@@ -20,11 +19,10 @@ CHUNK_SIZE = 128
 
 
 def authenticate() -> requests.Session:
-    """
-    Authenticates to AO3, returning the session to use.
+    """Authenticates to AO3, returning the session to use.
 
-    Uses AO3_USERNAME and AO3_PASSWORD environment variables if available.
-    Otherwise, prompts the user for input.
+    Uses AO3_USERNAME and AO3_PASSWORD environment variables if available. Otherwise,
+    prompts the user for input.
     """
     session = requests.Session()
     with yaspin(Spinners.bouncingBar, text="Establishing connection with AO3"):
@@ -72,8 +70,7 @@ def get_user_works_url(user: str, page: int) -> str:
 
 
 def get_download_path(soup: BeautifulSoup) -> str:
-    """
-    Gets the path for downloading a work as an EPUB.
+    """Gets the path for downloading a work as an EPUB.
 
     The relevant location in the HTML is under the `download` class:
     ```html
@@ -94,12 +91,13 @@ def get_download_path(soup: BeautifulSoup) -> str:
     download_options = download_class.find_all("li")
     epub_path = download_options[1].a.get("href")
 
-    return epub_path
+    return str(epub_path)
 
 
 def check_headers_for_attachment(response: requests.Response) -> str:
-    """
-    Asserts that the content of the provided response is an attachment. Returns the filename as a UTF-8 encoded string.
+    """Asserts that the content of the provided response is an attachment.
+
+    Returns the filename as a UTF-8 encoded string.
     """
     content_disposition = response.headers["content-disposition"]
     assert content_disposition.startswith("attachment")
@@ -113,9 +111,8 @@ def check_headers_for_attachment(response: requests.Response) -> str:
 
 
 def archive_work(session: requests.Session, work_id: int, output: Path):
-    """
-    Downloads `work_id` as an EPUB from AO3 and writes to the specified output directory.
-    """
+    """Downloads `work_id` as an EPUB from AO3 and writes to the specified output
+    directory."""
     with yaspin(Spinners.bouncingBar, text=f"Downloading work id {work_id}") as spinner:
         r = session.get(get_work_url(work_id))
         r.raise_for_status()
@@ -134,8 +131,7 @@ def archive_work(session: requests.Session, work_id: int, output: Path):
 
 
 def get_user_page_count(soup: BeautifulSoup) -> int:
-    """
-    Gets the number of pages in the user works navigation bar.
+    """Gets the number of pages in the user works navigation bar.
 
     The relevant location in the HTML is under the `pagination actions pagy` class:
     ```html
@@ -170,8 +166,7 @@ def get_user_page_count(soup: BeautifulSoup) -> int:
 
 
 def get_page_work_ids(soup: BeautifulSoup) -> list[int]:
-    """
-    Gets the ids of all the works listed in a user's page.
+    """Gets the ids of all the works listed in a user's page.
 
     Work blurbs are identified by the role `article`:
     ```html
@@ -180,10 +175,10 @@ def get_page_work_ids(soup: BeautifulSoup) -> list[int]:
      Listing Works
     </h3>
     <ol class="work index group">
-     <li class="work blurb group work-<work_id> user-<user_id>" id="work_<work_id>" role="article">
+     <li class="..." id="work_<work_id>" role="article">
      ...
      </li>
-     <li class="work blurb group work-<work_id> user-<user_id>" id="work_<work_id>" role="article">
+     <li class="..." id="work_<work_id>" role="article">
      </li>
     </ol>
     ```
@@ -192,16 +187,16 @@ def get_page_work_ids(soup: BeautifulSoup) -> list[int]:
     work_ids = []
 
     for work_blurb in work_blurbs:
-        work_id = re.match(r"work_([0-9]+)", work_blurb["id"]).group(1)
+        work_id = str(work_blurb["id"])
+        work_id = re.match(r"work_([0-9]+)", work_id).group(1)
         work_ids.append(int(work_id))
 
     return work_ids
 
 
 def archive_user(session: requests.Session, user: str, output: Path):
-    """
-    Downloads all works from a user as EPUBs and writes them to the specified output directory.
-    """
+    """Downloads all works from a user as EPUBs and writes them to the specified output
+    directory."""
     page = 1
     with yaspin(Spinners.bouncingBar, text=f"Querying works from {user}"):
         works_url = get_user_works_url(user, page)
@@ -226,8 +221,7 @@ def archive_user(session: requests.Session, user: str, output: Path):
 
 
 def archive(args: Namespace):
-    """
-    Downloads EPUBs from AO3 and writes them to the specified output directory.
+    """Downloads EPUBs from AO3 and writes them to the specified output directory.
 
     Requires authentication to AO3.
     """
@@ -245,7 +239,8 @@ def archive(args: Namespace):
 
             output = candidate
             print(
-                f"{args.output}/archive already exists. Writing to {args.output}/{output.name} instead."
+                f"{args.output}/archive already exists. \
+                Writing to {args.output}/{output.name} instead."
             )
 
     output.mkdir(parents=True, exist_ok=False)

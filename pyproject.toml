@@ -22,12 +22,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.envs.default]
 python = "3.13"
-
-[tool.hatch.envs.style]
 dependencies = [
+  "pre-commit",
   "ruff",
-  "isort",
+  "docformatter",
 ]
 
 [tool.hatch.version]
 path = "src/a2o3/__about__.py"
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "W"]
