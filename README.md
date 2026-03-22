@@ -1,6 +1,9 @@
 # Archiver for AO3
 This is my personal Python script for archiving AO3.
 
+## BIG FAT WARNING
+It turns out that AO3 strips work skin information during the conversion to EPUB! This means if you are downloading anything that uses a creator style, you should download it as HTML.
+
 ## Usage
 At the moment, authentication to AO3 is required and happens every time you run the script. If you don't want to be prompted for your username and password, the script can read them out of the environment variables `AO3_USERNAME` and `AO3_PASSWORD`, respectively.
 

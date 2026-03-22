@@ -1,7 +1,8 @@
 import getpass
 import os
 import re
-from argparse import Namespace
+from enum import Enum
+from argparse import Namespace, ArgumentTypeError
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -16,6 +17,26 @@ ENV_AO3_USERNAME = "AO3_USERNAME"
 ENV_AO3_PASSWORD = "AO3_PASSWORD"
 
 CHUNK_SIZE = 128
+
+
+class Format(Enum):
+    """Supported file formats for download from AO3."""
+
+    AZW3 = "azw3"
+    EPUB = "epub"
+    MOBI = "mobi"
+    PDF = "pdf"
+    HTML = "html"
+
+
+def str_to_format(s: str) -> Format:
+    """Converts a case-insensitive string to a Format or raises an error."""
+    try:
+        return Format(s.lower())
+    except ValueError:
+        raise ArgumentTypeError(
+            f"Invalid format: {s}. Must be one of {[f.value for f in Format]}"
+        )
 
 
 def authenticate() -> requests.Session:
@@ -69,7 +90,7 @@ def get_user_works_url(user: str, page: int) -> str:
     return f"https://archiveofourown.org/users/{user}/works?page={page}"
 
 
-def get_download_path(soup: BeautifulSoup) -> str:
+def get_download_path(soup: BeautifulSoup, file_format: Format) -> str:
     """Gets the path for downloading a work as an EPUB.
 
     The relevant location in the HTML is under the `download` class:
@@ -89,9 +110,19 @@ def get_download_path(soup: BeautifulSoup) -> str:
     """
     download_class = soup.find("li", class_="download")
     download_options = download_class.find_all("li")
-    epub_path = download_options[1].a.get("href")
+    match file_format:
+        case Format.AZW3:
+            download_path = download_options[0].a.get("href")
+        case Format.EPUB:
+            download_path = download_options[1].a.get("href")
+        case Format.MOBI:
+            download_path = download_options[2].a.get("href")
+        case Format.PDF:
+            download_path = download_options[3].a.get("href")
+        case Format.HTML:
+            download_path = download_options[4].a.get("href")
 
-    return str(epub_path)
+    return str(download_path)
 
 
 def check_headers_for_attachment(response: requests.Response) -> str:
@@ -110,7 +141,9 @@ def check_headers_for_attachment(response: requests.Response) -> str:
     return unquote(encoded_filename, encoding=charset)
 
 
-def archive_work(session: requests.Session, work_id: int, output: Path):
+def archive_work(
+    session: requests.Session, work_id: int, output: Path, file_format: Format
+):
     """Downloads `work_id` as an EPUB from AO3 and writes to the specified output
     directory."""
     with yaspin(Spinners.bouncingBar, text=f"Downloading work id {work_id}") as spinner:
@@ -118,7 +151,7 @@ def archive_work(session: requests.Session, work_id: int, output: Path):
         r.raise_for_status()
         work_soup = BeautifulSoup(r.text, "html.parser")
 
-        download_path = get_download_path(work_soup)
+        download_path = get_download_path(work_soup, file_format)
         r = session.get(get_work_download_url(download_path))
         r.raise_for_status()
         filename = check_headers_for_attachment(r)
@@ -194,7 +227,9 @@ def get_page_work_ids(soup: BeautifulSoup) -> list[int]:
     return work_ids
 
 
-def archive_user(session: requests.Session, user: str, output: Path):
+def archive_user(
+    session: requests.Session, user: str, output: Path, file_format: Format
+):
     """Downloads all works from a user as EPUBs and writes them to the specified output
     directory."""
     page = 1
@@ -206,7 +241,7 @@ def archive_user(session: requests.Session, user: str, output: Path):
     works_soup = BeautifulSoup(r.text, "html.parser")
     page_count = get_user_page_count(works_soup)
     for work_id in get_page_work_ids(works_soup):
-        archive_work(session, work_id, output)
+        archive_work(session, work_id, output, file_format)
 
     while page < page_count:
         page += 1
@@ -217,7 +252,34 @@ def archive_user(session: requests.Session, user: str, output: Path):
 
         works_soup = BeautifulSoup(r.text, "html.parser")
         for work_id in get_page_work_ids(works_soup):
-            archive_work(session, work_id, output)
+            archive_work(session, work_id, output, file_format)
+
+
+def create_archive_path(output: str) -> Path:
+    """Creates the output directory to write downloaded files to.
+
+    If the directory already exists, creates an `archive` directory as a subfolder.
+    """
+    archive_path = Path(output)
+    if archive_path.exists():
+        # Create the `archive` directory at the output path.
+        # If `archive` already exists, give it a unique filename.
+        archive_path = Path(output) / "archive"
+        if archive_path.exists():
+            counter = 1
+            candidate = archive_path
+            while candidate.exists():
+                candidate = archive_path.with_name(f"{archive_path.name}_{counter}")
+                counter += 1
+
+            archive_path = candidate
+            print(
+                f"{output}/archive already exists. \
+                Writing to {output}/{archive_path.name} instead."
+            )
+
+    archive_path.mkdir(parents=True, exist_ok=False)
+    return archive_path
 
 
 def archive(args: Namespace):
@@ -225,30 +287,22 @@ def archive(args: Namespace):
 
     Requires authentication to AO3.
     """
-    output = Path(args.output)
-    if output.exists():
-        # Create the `archive` directory at the output path.
-        # If `archive` already exists, give it a unique filename.
-        output = Path(args.output) / "archive"
-        if output.exists():
-            counter = 1
-            candidate = output
-            while candidate.exists():
-                candidate = output.with_name(f"{output.name}_{counter}")
-                counter += 1
+    # HTML is the only format that I've verified to be lossless.
+    # TODO(anna): research the other filetypes to verify this claim.
+    if args.format != Format.HTML:
+        print(
+            "\033[31m"
+            "Warning: AO3 strips creator work skins from this format. "
+            "The only lossless format is HTML."
+            "\033[0m"
+        )
 
-            output = candidate
-            print(
-                f"{args.output}/archive already exists. \
-                Writing to {args.output}/{output.name} instead."
-            )
-
-    output.mkdir(parents=True, exist_ok=False)
+    output = create_archive_path(args.output)
 
     session = authenticate()
 
     if args.work is not None:
-        archive_work(session, args.work, output)
+        archive_work(session, args.work, output, args.format)
 
     elif args.user is not None:
-        archive_user(session, args.user, output)
+        archive_user(session, args.user, output, args.format)

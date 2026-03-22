@@ -33,4 +33,4 @@ path = "src/a2o3/__about__.py"
 
 [tool.ruff]
 line-length = 88
-select = ["E", "F", "W"]
+lint.select = ["E", "F", "W"]
