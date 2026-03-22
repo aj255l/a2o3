@@ -23,5 +23,11 @@ build-backend = "hatchling.build"
 [tool.hatch.envs.default]
 python = "3.13"
 
+[tool.hatch.envs.style]
+dependencies = [
+  "ruff",
+  "isort",
+]
+
 [tool.hatch.version]
 path = "src/a2o3/__about__.py"
