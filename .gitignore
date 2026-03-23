@@ -1,6 +1,10 @@
 # .DS_Store
 .DS_Store
 
+# A2O3 downloads
+archive/
+archive_*/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

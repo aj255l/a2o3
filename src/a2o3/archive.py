@@ -1,6 +1,8 @@
 import getpass
 import os
 import re
+
+from dataclasses import dataclass
 from enum import Enum
 from argparse import Namespace, ArgumentTypeError
 from pathlib import Path
@@ -17,6 +19,21 @@ ENV_AO3_USERNAME = "AO3_USERNAME"
 ENV_AO3_PASSWORD = "AO3_PASSWORD"
 
 CHUNK_SIZE = 128
+
+CREATOR_STYLE_WARNING = """\033[31m
+Warning: This work has a work skin.
+AO3's default behavior is to strip work skins
+for all download formats except HTML.\033[0m
+"""
+CREATOR_STYLE_PROMPT = """\033[31m
+What would you like to do?
+  [1]: Download anyway and strip the work skin.
+  [2]: Download as HTML and preserve the work skin.
+  [3]: Quit.\033[0m
+"""
+CREATOR_STYLE_RETRY = """\033[31m
+Please enter a number from 1 to 3.\033[0m
+"""
 
 
 class Format(Enum):
@@ -37,6 +54,45 @@ def str_to_format(s: str) -> Format:
         raise ArgumentTypeError(
             f"Invalid format: {s}. Must be one of {[f.value for f in Format]}"
         )
+
+
+class CreatorStyleConfig(Enum):
+    """Configuration for handling works with work skins.
+
+    Members:
+        WARN: Warn the user about lossy formats and require confirmation.
+        PRESERVE: Automatically preserve creator styles.
+        STRIP: Automatically strip creator styles. This is the default AO3 behavior.
+    """
+
+    WARN = "warn"
+    PRESERVE = "preserve"
+    STRIP = "strip"
+
+
+@dataclass
+class ArchiveConfig:
+    """Configuration for the `archive` subcommand.
+
+    Attributes:
+        file_format: Output file format for archived works.
+        output_path: Path to write archived works to.
+        creator_style: Configuration for handling creator style.
+    """
+
+    file_format: Format
+    output_path: Path
+    creator_style: CreatorStyleConfig
+
+    def __init__(self, args: Namespace):
+        self.file_format = args.format
+        self.output_path = create_archive_path(args.output)
+        if args.preserve_creator_style:
+            self.creator_style = CreatorStyleConfig.PRESERVE
+        elif args.strip_creator_style:
+            self.creator_style = CreatorStyleConfig.STRIP
+        else:
+            self.creator_style = CreatorStyleConfig.WARN
 
 
 def authenticate() -> requests.Session:
@@ -77,7 +133,7 @@ def authenticate() -> requests.Session:
 
 def get_work_url(work_id: int) -> str:
     """Builds the URL to access a single work."""
-    return f"https://archiveofourown.org/works/{work_id}"
+    return f"https://archiveofourown.org/works/{work_id}?style=creator"
 
 
 def get_work_download_url(download_path: str) -> str:
@@ -90,8 +146,25 @@ def get_user_works_url(user: str, page: int) -> str:
     return f"https://archiveofourown.org/users/{user}/works?page={page}"
 
 
+def has_creator_style(soup: BeautifulSoup) -> bool:
+    """Determines whether a creator style is applied.
+
+    The relevant location in the HTML is under the `work navigation actions` class:
+    ```html
+    <ul class="work navigation actions">
+     ...
+     <li class = "style"> </li>
+     ...
+    </ul>
+    ```
+    """
+    work_nav_class = soup.find("ul", class_="work navigation actions")
+    print(work_nav_class)
+    return work_nav_class.find("li", class_="style") is not None
+
+
 def get_download_path(soup: BeautifulSoup, file_format: Format) -> str:
-    """Gets the path for downloading a work as an EPUB.
+    """Gets the path for downloading a work as the specified format.
 
     The relevant location in the HTML is under the `download` class:
     ```html
@@ -141,24 +214,52 @@ def check_headers_for_attachment(response: requests.Response) -> str:
     return unquote(encoded_filename, encoding=charset)
 
 
-def archive_work(
-    session: requests.Session, work_id: int, output: Path, file_format: Format
-):
-    """Downloads `work_id` as an EPUB from AO3 and writes to the specified output
-    directory."""
+def archive_work(session: requests.Session, config: ArchiveConfig, work_id: int):
+    """Downloads `work_id` as from AO3 and writes to the specified output directory."""
     with yaspin(Spinners.bouncingBar, text=f"Downloading work id {work_id}") as spinner:
         r = session.get(get_work_url(work_id))
         r.raise_for_status()
         work_soup = BeautifulSoup(r.text, "html.parser")
 
-        download_path = get_download_path(work_soup, file_format)
-        r = session.get(get_work_download_url(download_path))
-        r.raise_for_status()
-        filename = check_headers_for_attachment(r)
+        preserve_style = False
+        if has_creator_style(work_soup) and config.file_format != Format.HTML:
+            if config.creator_style == CreatorStyleConfig.WARN:
+                spinner.stop()
 
-        with open(output / filename, "wb") as fd:
-            for chunk in r.iter_content(chunk_size=CHUNK_SIZE):
-                fd.write(chunk)
+                def is_valid(s: str) -> bool:
+                    return s.isnumeric() and (1 <= int(s) <= 3)
+
+                print(CREATOR_STYLE_WARNING)
+                user_input = input(CREATOR_STYLE_PROMPT)
+                while not is_valid(user_input):
+                    print(CREATOR_STYLE_RETRY)
+                    user_input = input(CREATOR_STYLE_PROMPT)
+
+                if user_input == 1:
+                    preserve_style = False
+                elif user_input == 2:
+                    preserve_style = True
+                else:
+                    raise SystemExit
+
+                spinner.start()
+            elif config.creator_style == CreatorStyleConfig.PRESERVE:
+                preserve_style = True
+
+        if preserve_style:
+            # This flag should only be set if the user chose a lossy format.
+            assert config.file_format != Format.HTML
+
+            raise NotImplementedError
+        else:
+            download_path = get_download_path(work_soup, config.file_format)
+            r = session.get(get_work_download_url(download_path))
+            r.raise_for_status()
+            filename = check_headers_for_attachment(r)
+
+            with open(config.output_path / filename, "wb") as fd:
+                for chunk in r.iter_content(chunk_size=CHUNK_SIZE):
+                    fd.write(chunk)
 
         spinner.ok("✔")
 
@@ -227,9 +328,7 @@ def get_page_work_ids(soup: BeautifulSoup) -> list[int]:
     return work_ids
 
 
-def archive_user(
-    session: requests.Session, user: str, output: Path, file_format: Format
-):
+def archive_user(session: requests.Session, config: ArchiveConfig, user: str):
     """Downloads all works from a user as EPUBs and writes them to the specified output
     directory."""
     page = 1
@@ -241,7 +340,7 @@ def archive_user(
     works_soup = BeautifulSoup(r.text, "html.parser")
     page_count = get_user_page_count(works_soup)
     for work_id in get_page_work_ids(works_soup):
-        archive_work(session, work_id, output, file_format)
+        archive_work(session, config, work_id)
 
     while page < page_count:
         page += 1
@@ -252,7 +351,7 @@ def archive_user(
 
         works_soup = BeautifulSoup(r.text, "html.parser")
         for work_id in get_page_work_ids(works_soup):
-            archive_work(session, work_id, output, file_format)
+            archive_work(session, config, work_id)
 
 
 def create_archive_path(output: str) -> Path:
@@ -274,8 +373,8 @@ def create_archive_path(output: str) -> Path:
 
             archive_path = candidate
             print(
-                f"{output}/archive already exists. \
-                Writing to {output}/{archive_path.name} instead."
+                f"{output}/archive already exists. "
+                f"Writing to {output}/{archive_path.name} instead."
             )
 
     archive_path.mkdir(parents=True, exist_ok=False)
@@ -283,26 +382,16 @@ def create_archive_path(output: str) -> Path:
 
 
 def archive(args: Namespace):
-    """Downloads EPUBs from AO3 and writes them to the specified output directory.
+    """Downloads works from AO3 and writes them to the specified output directory.
 
     Requires authentication to AO3.
     """
-    # HTML is the only format that I've verified to be lossless.
-    # TODO(anna): research the other filetypes to verify this claim.
-    if args.format != Format.HTML:
-        print(
-            "\033[31m"
-            "Warning: AO3 strips creator work skins from this format. "
-            "The only lossless format is HTML."
-            "\033[0m"
-        )
-
-    output = create_archive_path(args.output)
+    config = ArchiveConfig(args)
 
     session = authenticate()
 
     if args.work is not None:
-        archive_work(session, args.work, output, args.format)
+        archive_work(session, config, args.work)
 
     elif args.user is not None:
-        archive_user(session, args.user, output, args.format)
+        archive_user(session, config, args.user)

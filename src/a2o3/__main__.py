@@ -11,8 +11,8 @@ def main():
     archive_parser = subparsers.add_parser(
         "archive", help="Scrape and download works from AO3."
     )
-    archive_group = archive_parser.add_mutually_exclusive_group()
-    archive_group.add_argument(
+    archive_selector_group = archive_parser.add_mutually_exclusive_group()
+    archive_selector_group.add_argument(
         "--user",
         "-u",
         help=(
@@ -20,7 +20,7 @@ def main():
             "This must be the author's username, not a pseudonym."
         ),
     )
-    archive_group.add_argument(
+    archive_selector_group.add_argument(
         "--work",
         "-w",
         type=int,
@@ -41,6 +41,25 @@ def main():
         type=Format,
         default=Format.HTML,
         help="Format to download files as: AZW3, EPUB, MOBI, PDF, or HTML (default).",
+    )
+    archive_style_group = archive_parser.add_mutually_exclusive_group()
+    archive_style_group.add_argument(
+        "--preserve-creator-style",
+        action="store_true",
+        default=False,
+        help=(
+            "Automatically apply work skins to downloaded works. "
+            "Works will be downloaded as HTML and converted to alternative formats. "
+        ),
+    )
+    archive_style_group.add_argument(
+        "--strip-creator-style",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable the confirmation prompt for works with work skins. "
+            "Works will be downloaded using AO3's ebook conversion process."
+        ),
     )
     archive_parser.set_defaults(func=archive)
 
