@@ -11,6 +11,7 @@ dependencies = [
     "requests[security]",
     "beautifulsoup4",
     "yaspin",
+    "langcodes[data]",
 ]
 
 [project.scripts]

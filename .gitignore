@@ -3,6 +3,7 @@
 
 # A2O3 downloads
 archive/
+!src/a2o3/commands/archive/
 archive_*/
 
 # Byte-compiled / optimized / DLL files
