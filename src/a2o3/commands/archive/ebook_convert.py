@@ -98,7 +98,7 @@ def get_ebook_convert_command(
     series = []
     if meta.series is not None:
         series_title, series_part = meta.series
-        series = ["--series", series_title, "--series-index", series_part]
+        series = ["--series", series_title, "--series-index", str(series_part)]
 
     ebook_path = config.output_path / f"{filename}.{config.file_format.value}"
     return (

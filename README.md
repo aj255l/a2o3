@@ -12,6 +12,11 @@ To download a single work:
 a2o3 archive --work <work_id>
 ```
 
+To download multiple specific works:
+```bash
+a2o3 archive --works <work_id> <work_id> ...
+```
+
 To download all works from an author:
 ```bash
 a2o3 archive --user <username>

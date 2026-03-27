@@ -22,6 +22,13 @@ def register_archive_subcommand(subparsers):
         type=int,
         help="Work ID to scrape.",
     )
+    archive_selector_group.add_argument(
+        "--works",
+        nargs="+",
+        type=int,
+        metavar="WORK_ID",
+        help="One or more work IDs to scrape.",
+    )
     archive_parser.add_argument(
         "--output",
         "-o",

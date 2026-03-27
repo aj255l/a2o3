@@ -118,5 +118,8 @@ def archive(args: Namespace):
 
     if args.work is not None:
         archive_work(session, config, args.work)
+    elif args.works is not None:
+        for work_id in args.works:
+            archive_work(session, config, work_id)
     elif args.user is not None:
         archive_user(session, config, args.user)
