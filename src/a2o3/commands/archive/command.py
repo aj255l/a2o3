@@ -14,6 +14,7 @@ from a2o3.commands.archive.client import (
     write_response_to_path,
 )
 from a2o3.commands.archive.config import ArchiveConfig, Format
+from a2o3.commands.archive.errors import AO3NotFoundError, request
 from a2o3.commands.archive.parse import (
     check_headers_for_attachment,
     get_download_path,
@@ -31,9 +32,22 @@ from a2o3.commands.archive.ebook_convert import (
 def archive_work(session: requests.Session, config: ArchiveConfig, work_id: int):
     """Download `work_id` as from AO3 and write to the specified output directory."""
     with yaspin(Spinners.bouncingBar, text=f"Downloading work id {work_id}") as spinner:
-        r = session.get(get_work_url(work_id))
-        r.raise_for_status()
+        try:
+            r = request(session, "GET", get_work_url(work_id), spinner=spinner)
+        except AO3NotFoundError as exc:
+            raise AO3NotFoundError(
+                f"Error fetching work {work_id}: work does not exist."
+            ) from exc
         work_soup = BeautifulSoup(r.text, "html.parser")
+        error_container = work_soup.find("div", class_="flash error")
+        if error_container is not None:
+            error_text = error_container.get_text(" ", strip=True)
+            if "Sorry, we couldn't find the work you were looking for" in error_text:
+                # TODO(anna): Add Web Archive support for deleted works.
+                raise AO3NotFoundError(
+                    f"Error fetching work {work_id}: "
+                    "this work appears to have been deleted."
+                )
 
         preserve_style = False
         if has_creator_style(work_soup) and config.file_format != Format.HTML:
@@ -51,8 +65,12 @@ def archive_work(session: requests.Session, config: ArchiveConfig, work_id: int)
             #   - Download as HTML and request the stylesheet.
             #   - Convert the HTML into an ebook ourselves.
             html_download_path = get_download_path(work_soup, Format.HTML)
-            r = session.get(get_work_download_url(html_download_path))
-            r.raise_for_status()
+            r = request(
+                session,
+                "GET",
+                get_work_download_url(html_download_path),
+                spinner=spinner,
+            )
             filename = check_headers_for_attachment(r)
 
             # Write HTML to a temporary directory
@@ -74,8 +92,9 @@ def archive_work(session: requests.Session, config: ArchiveConfig, work_id: int)
             # If we don't care about preserving style, we can directly request
             # a download and write to the output directory.
             download_path = get_download_path(work_soup, config.file_format)
-            r = session.get(get_work_download_url(download_path))
-            r.raise_for_status()
+            r = request(
+                session, "GET", get_work_download_url(download_path), spinner=spinner
+            )
             filename = check_headers_for_attachment(r)
             write_response_to_path(r, config.output_path / filename)
 
@@ -85,11 +104,17 @@ def archive_work(session: requests.Session, config: ArchiveConfig, work_id: int)
 def archive_user(session: requests.Session, config: ArchiveConfig, user: str):
     """Download all works from a user as EPUBs and write them to the specified output
     directory."""
+    # TODO(anna): Handle pseuds when archiving a user's works.
     page = 1
-    with yaspin(Spinners.bouncingBar, text=f"Querying works from {user}"):
+    with yaspin(Spinners.bouncingBar, text=f"Querying works from {user}") as spinner:
         works_url = get_user_works_url(user, page)
-        r = session.get(works_url)
-        r.raise_for_status()
+        try:
+            r = request(session, "GET", works_url, spinner=spinner)
+        except AO3NotFoundError as exc:
+            raise AO3NotFoundError(
+                f"Error fetching user {user}: "
+                "user does not exist or failed to fetch works page."
+            ) from exc
 
     works_soup = BeautifulSoup(r.text, "html.parser")
     page_count = get_user_page_count(works_soup)
@@ -100,8 +125,13 @@ def archive_user(session: requests.Session, config: ArchiveConfig, user: str):
         page += 1
         works_url = get_user_works_url(user, page)
 
-        r = session.get(works_url)
-        r.raise_for_status()
+        try:
+            r = request(session, "GET", works_url, spinner=spinner)
+        except AO3NotFoundError as exc:
+            raise AO3NotFoundError(
+                f"Error fetching user {user}: "
+                "user does not exist or failed to fetch works page."
+            ) from exc
 
         works_soup = BeautifulSoup(r.text, "html.parser")
         for work_id in get_page_work_ids(works_soup):

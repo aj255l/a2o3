@@ -7,14 +7,18 @@ from bs4 import BeautifulSoup
 from yaspin import yaspin
 from yaspin.spinners import Spinners
 
+from a2o3.commands.archive.errors import AO3AuthenticationError, ArchiveError, request
+
 LOGIN_URL = "https://archiveofourown.org/users/login"
 
 ENV_AO3_USERNAME = "AO3_USERNAME"
 ENV_AO3_PASSWORD = "AO3_PASSWORD"
 
 CHUNK_SIZE = 128
+LOGIN_TIMEOUT_SECONDS = 60
 
 
+# TODO(anna): Authenticating isn't necessary but preferred
 def authenticate() -> requests.Session:
     """Authenticate to AO3, returning the session to use.
 
@@ -22,15 +26,36 @@ def authenticate() -> requests.Session:
     prompts the user for input.
     """
     session = requests.Session()
-    with yaspin(Spinners.bouncingBar, text="Establishing connection with AO3"):
-        r = session.get(LOGIN_URL)
-        r.raise_for_status()
+    with yaspin(
+        Spinners.bouncingBar, text="Establishing connection with AO3"
+    ) as spinner:
+        try:
+            r = request(
+                session,
+                "GET",
+                LOGIN_URL,
+                spinner=spinner,
+                timeout=LOGIN_TIMEOUT_SECONDS,
+            )
+        except requests.Timeout:
+            spinner.write(
+                "AO3 login request timed out after 60 seconds. Retrying once."
+            )
+            r = request(
+                session,
+                "GET",
+                LOGIN_URL,
+                spinner=spinner,
+                timeout=LOGIN_TIMEOUT_SECONDS,
+            )
 
     soup = BeautifulSoup(r.text, "html.parser")
     auth_token = soup.find("input", {"name": "authenticity_token"})
 
     if not auth_token or "value" not in auth_token.attrs:
-        raise RuntimeError("Could not find authenticity_token")
+        raise ArchiveError(
+            "Error logging in to AO3: login page is missing authenticity_token."
+        )
 
     # Check for the presence of AO3_USERNAME and AO3_PASSWORD environment variables.
     # Otherwise, prompt the user for a username and password.
@@ -44,9 +69,33 @@ def authenticate() -> requests.Session:
         "user[password]": password,
         "commit": "Log in",
     }
-    with yaspin(Spinners.bouncingBar, text="Logging in"):
-        r = session.post(LOGIN_URL, data=payload)
-        r.raise_for_status()
+    with yaspin(Spinners.bouncingBar, text="Logging in") as spinner:
+        try:
+            r = request(
+                session,
+                "POST",
+                LOGIN_URL,
+                spinner=spinner,
+                data=payload,
+                timeout=LOGIN_TIMEOUT_SECONDS,
+            )
+        except requests.Timeout:
+            spinner.write(
+                "AO3 login request timed out after 60 seconds. Retrying once."
+            )
+            r = request(
+                session,
+                "POST",
+                LOGIN_URL,
+                spinner=spinner,
+                data=payload,
+                timeout=LOGIN_TIMEOUT_SECONDS,
+            )
+
+    if r.url.rstrip("/").endswith("/auth_error"):
+        raise AO3AuthenticationError(
+            "Error logging in to AO3: username or password is incorrect."
+        )
 
     return session
 
