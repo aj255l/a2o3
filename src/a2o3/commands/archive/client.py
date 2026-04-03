@@ -18,7 +18,7 @@ CHUNK_SIZE = 128
 LOGIN_TIMEOUT_SECONDS = 60
 
 
-# TODO(anna): Authenticating isn't necessary but preferred
+# TODO: Authenticating isn't necessary but preferred
 def authenticate() -> requests.Session:
     """Authenticate to AO3, returning the session to use.
 

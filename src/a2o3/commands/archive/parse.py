@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from a2o3.commands.archive.config import Format
 
 
-# TODO(anna): Add a helper for propagating parse errors cleanly.
+# TODO: Add a helper for propagating parse errors cleanly.
 WORKSKIN_TAG = "workskin"
 AUTHOR_PSEUD_REGEX = r"\s*\([^)]*\)$"
 SORTED_AUTHOR_REGEX = r'^[\+\-=_\?!\'"\./]'
@@ -105,7 +105,7 @@ class WorkMetadata:
 
         byline = meta.find("div", class_="byline")
         assert byline is not None
-        # TODO(anna): Handle pseuds in the author list.
+        # TODO: Handle pseuds in the author list.
         authors = [author.get_text(strip=True) for author in byline.find_all("a")]
 
         summary_heading = meta.find("p", string="Summary")
@@ -296,7 +296,7 @@ def check_headers_for_attachment(response: requests.Response) -> str:
         r"filename\*\s*=\s*([^']+)''(.+)", content_disposition
     ).groups()
 
-    # TODO(anna): Fall back on filename if decoding error
+    # TODO: Fall back on filename if decoding error
     return unquote(encoded_filename, encoding=charset)
 
 

@@ -43,7 +43,7 @@ def archive_work(session: requests.Session, config: ArchiveConfig, work_id: int)
         if error_container is not None:
             error_text = error_container.get_text(" ", strip=True)
             if "Sorry, we couldn't find the work you were looking for" in error_text:
-                # TODO(anna): Add Web Archive support for deleted works.
+                # TODO: Add Web Archive support for deleted works.
                 raise AO3NotFoundError(
                     f"Error fetching work {work_id}: "
                     "this work appears to have been deleted."
@@ -74,7 +74,7 @@ def archive_work(session: requests.Session, config: ArchiveConfig, work_id: int)
             filename = check_headers_for_attachment(r)
 
             # Write HTML to a temporary directory
-            # TODO(anna): Make this do less directory creation and removal.
+            # TODO: Make this do less directory creation and removal.
             temp_path = config.output_path / "tmp"
             temp_path.mkdir()
             temp_html = temp_path / filename
@@ -104,7 +104,7 @@ def archive_work(session: requests.Session, config: ArchiveConfig, work_id: int)
 def archive_user(session: requests.Session, config: ArchiveConfig, user: str):
     """Download all works from a user as EPUBs and write them to the specified output
     directory."""
-    # TODO(anna): Handle pseuds when archiving a user's works.
+    # TODO: Handle pseuds when archiving a user's works.
     page = 1
     with yaspin(Spinners.bouncingBar, text=f"Querying works from {user}") as spinner:
         works_url = get_user_works_url(user, page)

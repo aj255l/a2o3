@@ -1,4 +1,4 @@
-"""TODO(anna): Centralize AO3 request error handling here.
+"""TODO: Centralize AO3 request error handling here.
 
 Implementation plan and requirements:
 
